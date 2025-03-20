@@ -15,31 +15,26 @@ UPDATE_INTERVAL = 50  # Update interval in milliseconds
 # Create figure for plotting
 plt.style.use('dark_background')
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
-fig.suptitle('Dual Microphone Audio Waveforms')
+fig.suptitle('Real-time Audio Waveform')
 
-# Setup plots for both channels
+# Setup main waveform plot
 ax1.set_ylabel('Amplitude')
 ax1.set_ylim(-32768, 32768)
-line1_left, = ax1.plot([], [], 'c-', linewidth=1, label='Mic 1 (Left)')
-line1_right, = ax1.plot([], [], 'r-', linewidth=1, label='Mic 2 (Right)')
+line1, = ax1.plot([], [], 'c-', linewidth=1, label='Raw')
 
-# Setup downsampled plots
+# Setup downsampled plot
 ax2.set_xlabel('Sample')
 ax2.set_ylabel('Amplitude')
 ax2.set_ylim(-32768, 32768)
-line2_left, = ax2.plot([], [], 'c-', linewidth=1, label='Mic 1 (Downsampled)')
-line2_right, = ax2.plot([], [], 'r-', linewidth=1, label='Mic 2 (Downsampled)')
+line2, = ax2.plot([], [], 'g-', linewidth=1, label='Downsampled')
 
 # Add legends
 ax1.legend(loc='upper right')
 ax2.legend(loc='upper right')
 
 # Initialize with zeros
-raw_data_left = deque([0] * WINDOW_SIZE, maxlen=WINDOW_SIZE)
-raw_data_right = deque([0] * WINDOW_SIZE, maxlen=WINDOW_SIZE)
-downsampled_left = deque([0] * (WINDOW_SIZE // DISPLAY_DOWNSAMPLE), maxlen=WINDOW_SIZE // DISPLAY_DOWNSAMPLE)
-downsampled_right = deque([0] * (WINDOW_SIZE // DISPLAY_DOWNSAMPLE), maxlen=WINDOW_SIZE // DISPLAY_DOWNSAMPLE)
-
+raw_data = deque([0] * WINDOW_SIZE, maxlen=WINDOW_SIZE)
+downsampled_data = deque([0] * (WINDOW_SIZE // DISPLAY_DOWNSAMPLE), maxlen=WINDOW_SIZE // DISPLAY_DOWNSAMPLE)
 x_data_raw = np.arange(0, WINDOW_SIZE, 1)
 x_data_downsampled = np.arange(0, WINDOW_SIZE, DISPLAY_DOWNSAMPLE)
 
@@ -56,38 +51,27 @@ except serial.SerialException:
     sys.exit(1)
 
 def init():
-    line1_left.set_data(x_data_raw, raw_data_left)
-    line1_right.set_data(x_data_raw, raw_data_right)
-    line2_left.set_data(x_data_downsampled, downsampled_left)
-    line2_right.set_data(x_data_downsampled, downsampled_right)
-    return line1_left, line1_right, line2_left, line2_right
+    line1.set_data(x_data_raw, raw_data)
+    line2.set_data(x_data_downsampled, downsampled_data)
+    return line1, line2
 
 def animate(frame):
     try:
         # Read data from serial
         while ser.in_waiting:
             try:
-                # Read CSV format: "left_sample,right_sample"
-                line = ser.readline().decode().strip()
-                left_val, right_val = map(int, line.split(','))
-                
-                # Add to raw data
-                raw_data_left.append(left_val)
-                raw_data_right.append(right_val)
-                
-                # Add to downsampled data every Nth sample
-                if len(raw_data_left) % DISPLAY_DOWNSAMPLE == 0:
-                    downsampled_left.append(left_val)
-                    downsampled_right.append(right_val)
+                value = int(ser.readline().decode().strip())
+                raw_data.append(value)
+                # Only add to downsampled data every Nth sample
+                if len(raw_data) % DISPLAY_DOWNSAMPLE == 0:
+                    downsampled_data.append(value)
             except (ValueError, UnicodeDecodeError):
                 continue
         
         # Update plots
-        line1_left.set_data(x_data_raw, raw_data_left)
-        line1_right.set_data(x_data_raw, raw_data_right)
-        line2_left.set_data(x_data_downsampled, downsampled_left)
-        line2_right.set_data(x_data_downsampled, downsampled_right)
-        return line1_left, line1_right, line2_left, line2_right
+        line1.set_data(x_data_raw, raw_data)
+        line2.set_data(x_data_downsampled, downsampled_data)
+        return line1, line2
     except serial.SerialException:
         print("Serial connection lost!")
         sys.exit(1)
