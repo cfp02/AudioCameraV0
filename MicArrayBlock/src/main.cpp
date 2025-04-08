@@ -50,6 +50,8 @@ int32_t raw_samples_1[SAMPLE_BUFFER_SIZE * 2];  // For I2S_NUM_1
 int16_t converted_samples[SAMPLE_BUFFER_SIZE * 4];  // Combined buffer for all 4 channels
 
 void setup() {
+    delay(2000);
+
     Serial.begin(115200);
     delay(1000);  // Give serial time to connect
     

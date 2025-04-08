@@ -6,11 +6,14 @@ from collections import deque
 import sys
 
 # Configure these parameters
-SERIAL_PORT = '/dev/cu.usbmodem2101'  # Your ESP32's serial port
+SERIAL_PORT = '/dev/cu.usbmodem2101'
 BAUD_RATE = 115200
-WINDOW_SIZE = 2000  # Number of samples to show
-DISPLAY_DOWNSAMPLE = 10  # Only display every Nth sample
-UPDATE_INTERVAL = 50  # Update interval in milliseconds
+WINDOW_SIZE = 500  # Reduced from 2000 for smoother display
+DISPLAY_DOWNSAMPLE = 5  # Reduced from 10
+UPDATE_INTERVAL = 50
+
+# Scaling factors based on observed data ranges
+SCALING_FACTORS = [1.0, 1.0, 50.0, 50.0]  # More conservative scaling
 
 # Create figure for plotting
 plt.style.use('dark_background')
@@ -19,7 +22,7 @@ fig.suptitle('Quad Microphone Audio Waveforms')
 
 # Setup plots for all channels
 ax1.set_ylabel('Amplitude')
-ax1.set_ylim(-32768, 32768)
+ax1.set_ylim(-35000, 35000)  # Adjusted based on your data
 line1_mic1, = ax1.plot([], [], 'c-', linewidth=1, label='Mic 1')
 line1_mic2, = ax1.plot([], [], 'm-', linewidth=1, label='Mic 2')
 line1_mic3, = ax1.plot([], [], 'y-', linewidth=1, label='Mic 3')
@@ -28,7 +31,7 @@ line1_mic4, = ax1.plot([], [], 'g-', linewidth=1, label='Mic 4')
 # Setup downsampled plots
 ax2.set_xlabel('Sample')
 ax2.set_ylabel('Amplitude')
-ax2.set_ylim(-32768, 32768)
+ax2.set_ylim(-35000, 35000)  # Adjusted based on your data
 line2_mic1, = ax2.plot([], [], 'c-', linewidth=1, label='Mic 1 (Downsampled)')
 line2_mic2, = ax2.plot([], [], 'm-', linewidth=1, label='Mic 2 (Downsampled)')
 line2_mic3, = ax2.plot([], [], 'y-', linewidth=1, label='Mic 3 (Downsampled)')
@@ -57,71 +60,55 @@ except serial.SerialException:
         print(f"  {port.device}")
     sys.exit(1)
 
-def init():
-    # Initialize all lines with zeros
-    line1_mic1.set_data(x_data_raw, raw_data[0])
-    line1_mic2.set_data(x_data_raw, raw_data[1])
-    line1_mic3.set_data(x_data_raw, raw_data[2])
-    line1_mic4.set_data(x_data_raw, raw_data[3])
-    line2_mic1.set_data(x_data_downsampled, downsampled_data[0])
-    line2_mic2.set_data(x_data_downsampled, downsampled_data[1])
-    line2_mic3.set_data(x_data_downsampled, downsampled_data[2])
-    line2_mic4.set_data(x_data_downsampled, downsampled_data[3])
-    return line1_mic1, line1_mic2, line1_mic3, line1_mic4, line2_mic1, line2_mic2, line2_mic3, line2_mic4
-
 def animate(frame):
     try:
-        # Read data from serial
         while ser.in_waiting:
             try:
-                # Read CSV format: "mic1,mic2,mic3,mic4"
                 line = ser.readline().decode().strip()
                 values = list(map(int, line.split(',')))
                 
                 if len(values) == 4:
                     # Add to raw data
                     for i in range(4):
-                        raw_data[i].append(values[i])
+                        raw_data[i].append(values[i] * SCALING_FACTORS[i])
                     
                     # Add to downsampled data every Nth sample
                     if len(raw_data[0]) % DISPLAY_DOWNSAMPLE == 0:
                         for i in range(4):
-                            downsampled_data[i].append(values[i])
+                            downsampled_data[i].append(values[i] * SCALING_FACTORS[i])
             except (ValueError, UnicodeDecodeError):
                 continue
         
         # Update plots
-        line1_mic1.set_data(x_data_raw, raw_data[0])
-        line1_mic2.set_data(x_data_raw, raw_data[1])
-        line1_mic3.set_data(x_data_raw, raw_data[2])
-        line1_mic4.set_data(x_data_raw, raw_data[3])
-        line2_mic1.set_data(x_data_downsampled, downsampled_data[0])
-        line2_mic2.set_data(x_data_downsampled, downsampled_data[1])
-        line2_mic3.set_data(x_data_downsampled, downsampled_data[2])
-        line2_mic4.set_data(x_data_downsampled, downsampled_data[3])
+        line1_mic1.set_data(x_data_raw, list(raw_data[0]))
+        line1_mic2.set_data(x_data_raw, list(raw_data[1]))
+        line1_mic3.set_data(x_data_raw, list(raw_data[2]))
+        line1_mic4.set_data(x_data_raw, list(raw_data[3]))
+        
+        line2_mic1.set_data(x_data_downsampled, list(downsampled_data[0]))
+        line2_mic2.set_data(x_data_downsampled, list(downsampled_data[1]))
+        line2_mic3.set_data(x_data_downsampled, list(downsampled_data[2]))
+        line2_mic4.set_data(x_data_downsampled, list(downsampled_data[3]))
         
         return line1_mic1, line1_mic2, line1_mic3, line1_mic4, line2_mic1, line2_mic2, line2_mic3, line2_mic4
     
-    except serial.SerialException:
-        print("Serial connection lost!")
+    except serial.SerialException as e:
+        print(f"Serial error: {e}")
         sys.exit(1)
 
-# Create animation with explicit save_count
+# Create animation
 anim = FuncAnimation(
     fig, 
     animate, 
-    init_func=init, 
-    interval=UPDATE_INTERVAL, 
+    interval=UPDATE_INTERVAL,
     blit=True,
-    cache_frame_data=False,
-    save_count=100
+    cache_frame_data=False
 )
 
 # Set fixed axis limits
 ax1.set_xlim(0, WINDOW_SIZE)
 ax2.set_xlim(0, WINDOW_SIZE)
 
-# Show plot with tight layout
 plt.tight_layout()
 plt.show()
 
